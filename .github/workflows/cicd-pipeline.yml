@@ -3,7 +3,7 @@ name: CI/CD Deployment Pipeline
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ master ]   # 若你的預設分支是 main，改成 [ main ]
 
 permissions:
   contents: write
@@ -18,16 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Node (only when Node project)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 'latest'
+
       - name: Install deps & build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
@@ -35,8 +38,10 @@ jobs:
           bun install || true
           if [ -f package-lock.json ]; then npm ci || true; else npm install || true; fi
           npm run build --if-present || true
+
       - name: Archive workspace
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
+
       - uses: actions/upload-artifact@v4
         with:
           name: build-artifact
@@ -47,10 +52,10 @@ jobs:
     name: Deploy to Dev
     needs: [Build]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/master' }}   # 若改 main 也改這條
     environment:
       name: Development
-      url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -77,7 +82,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
       name: Staging
-      url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -99,12 +104,12 @@ jobs:
 
   DeployProd:
     name: Deploy to Production
-    needs: [DeployStaging]
+    needs: [DeployStaging]   # E 要求：Staging 成功後才進 Production
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: Production   # ← 保持有 Required reviewers（E 必要）
-      url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
+      name: Production       # 要和 Settings → Environments 名稱完全一致
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
