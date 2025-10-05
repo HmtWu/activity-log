@@ -3,7 +3,7 @@ name: CI/CD Deployment Pipeline
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]   # 兩個都支援，跟老師 if 條件一致
+    branches: [ master ]   # 你是 master；若用 main 就改成 main
 
 permissions:
   contents: write
@@ -13,10 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build & Package
+  Build:
+    name: Build
     runs-on: ubuntu-latest
-    # 若是 PR 或手動選到其他分支，仍可 build；deploy 會被 if 擋住
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,7 +32,7 @@ jobs:
         with:
           bun-version: 'latest'
 
-      - name: Install deps & run build (bun/npm)
+      - name: Install deps & build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
           set -e
@@ -42,8 +41,7 @@ jobs:
           npm run build --if-present || true
 
       - name: Archive workspace
-        run: |
-          zip -r build.zip . -x ".git/*" "node_modules/*"
+        run: zip -r build.zip . -x ".git/*" "node_modules/*"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -52,22 +50,18 @@ jobs:
           path: build.zip
           retention-days: 7
 
-  deploy-dev:
+  DeployDev:
     name: Deploy to Dev
-    needs: build
+    needs: [Build]
     runs-on: ubuntu-latest
-    # 只允許 main/master 進入 deploy（和老師投影片一致）
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/master' }}      # 老師投影片有加 if
     environment:
-      name: dev
-      # 顯示「這次部署的連結」→ 指到當次 release（好看、好截圖）
+      name: Development                               # ← 名稱要和 Settings 完全一致
       url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
       - name: Release Dev Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,20 +77,18 @@ jobs:
             gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
 
-  deploy-staging:
+  DeployStaging:
     name: Deploy to Staging
-    needs: deploy-dev
+    needs: [Build]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: staging
+      name: Staging
       url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
       - name: Release Staging Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -112,20 +104,18 @@ jobs:
             gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
 
-  deploy-production:
-    name: Deploy to Production (requires approval)
-    needs: deploy-staging
+  DeployProd:
+    name: Deploy to Production
+    needs: [DeployStaging]                             # ← 只有 Staging 成功才進 Production（E 要求）
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: production         # 會觸發你設定的 Required reviewers
+      name: Production                                 # ← 要和 Settings 完全一致（啟用 Required reviewers）
       url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
       - name: Release Production Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
