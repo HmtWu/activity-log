@@ -20,38 +20,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 若偵測到 Node 專案才裝 Node
       - name: Setup Node (only when Node project)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 安裝 Bun（很多 action 專案的 build 腳本會用 bun）
       - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 'latest'
 
-      # 先 bun，再 npm；沒有 build 腳本也不會失敗
       - name: Install deps & run build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
           set -e
-          echo "Trying bun install (ok if not needed)..."
           bun install || true
-          if [ -f package-lock.json ]; then
-            echo "Using npm ci..."
-            npm ci || true
-          else
-            echo "Using npm install..."
-            npm install || true
-          fi
-          echo "Run build script if present..."
+          if [ -f package-lock.json ]; then npm ci || true; else npm install || true; fi
           npm run build --if-present || true
 
-      # 一律打包成 build.zip，供後續環境使用
       - name: Archive workspace
         run: |
           zip -r build.zip . -x ".git/*" "node_modules/*"
@@ -77,17 +65,16 @@ jobs:
       - name: Release Dev Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}         # <— 明確告訴 gh 目標 repo
           TAG: ${{ vars.BUILD_TAG }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
-          echo "🔹 Checking GH auth..."
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
-          echo "🔹 Releasing $TAG"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "⚠️ Release $TAG already exists. Skipping create."
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE"
+            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
 
   deploy-staging:
@@ -104,15 +91,16 @@ jobs:
       - name: Release Staging Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           TAG: ${{ vars.BUILD_TAG }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "⚠️ Release $TAG already exists. Skipping create."
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE"
+            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
 
   deploy-production:
@@ -129,13 +117,14 @@ jobs:
       - name: Release Production Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           TAG: ${{ vars.BUILD_TAG }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "⚠️ Release $TAG already exists. Skipping create."
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE"
+            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
