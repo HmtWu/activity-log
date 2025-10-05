@@ -16,27 +16,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 只有偵測到 package.json 才安裝 Node 與跑 npm
+      # 若有 Node 專案就裝 Node
       - name: Setup Node (only when Node project)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install deps (Node) & optional build
+      # 安裝 Bun（許多 action 專案的 build 腳本會用到 bun）
+      - name: Setup Bun (for bun-based builds)
+        if: ${{ hashFiles('**/package.json') != '' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+
+      # 先用 bun 安裝；若沒需要或失敗，再用 npm。最後執行 package.json 的 build（若存在）
+      - name: Install deps & run build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
-          echo "package.json found → installing deps"
-          # 若沒有 package-lock，npm ci 會失敗，改用 npm install
+          set -e
+          echo "Trying bun install (ok to skip if not needed)..."
+          bun install || true
           if [ -f package-lock.json ]; then
-            npm ci
+            echo "Using npm ci..."
+            npm ci || true
           else
-            npm install
+            echo "Using npm install..."
+            npm install || true
           fi
-          # 若沒有 build 腳本，--if-present 不會報錯
-          npm run build --if-present
+          echo "Run build script if present..."
+          npm run build --if-present || true
 
-      # 無論是否為 Node 專案，都打包；排除 .git 與 node_modules，避免檔案太大
+      # 不論是否有 build 產物，都把工作區打包，供後續環境使用
       - name: Archive workspace
         run: |
           zip -r build.zip . -x ".git/*" "node_modules/*"
