@@ -3,7 +3,7 @@ name: CI/CD Deployment Pipeline
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]   # 你是 master；若用 main 就改成 main
+    branches: [ master ]
 
 permissions:
   contents: write
@@ -17,21 +17,17 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Node (only when Node project)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 'latest'
-
       - name: Install deps & build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
@@ -39,12 +35,9 @@ jobs:
           bun install || true
           if [ -f package-lock.json ]; then npm ci || true; else npm install || true; fi
           npm run build --if-present || true
-
       - name: Archive workspace
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: build-artifact
           path: build.zip
@@ -54,9 +47,9 @@ jobs:
     name: Deploy to Dev
     needs: [Build]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}      # 老師投影片有加 if
+    if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: Development                               # ← 名稱要和 Settings 完全一致
+      name: Development
       url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
     steps:
       - uses: actions/download-artifact@v4
@@ -106,11 +99,11 @@ jobs:
 
   DeployProd:
     name: Deploy to Production
-    needs: [DeployStaging]                             # ← 只有 Staging 成功才進 Production（E 要求）
+    needs: [DeployStaging]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: Production                                 # ← 要和 Settings 完全一致（啟用 Required reviewers）
+      name: Production   # ← 保持有 Required reviewers（E 必要）
       url: ${{ format('https://github.com/{0}/releases/tag/{1}', github.repository, vars.BUILD_TAG) }}
     steps:
       - uses: actions/download-artifact@v4
