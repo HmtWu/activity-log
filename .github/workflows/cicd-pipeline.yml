@@ -16,16 +16,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      # 只有偵測到 package.json 才安裝 Node 與跑 npm
+      - name: Setup Node (only when Node project)
+        if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install & Build
+      - name: Install deps (Node) & optional build
+        if: ${{ hashFiles('**/package.json') != '' }}
         run: |
-          npm ci
-          npm run build
-          zip -r build.zip .
+          echo "package.json found → installing deps"
+          # 若沒有 package-lock，npm ci 會失敗，改用 npm install
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          # 若沒有 build 腳本，--if-present 不會報錯
+          npm run build --if-present
+
+      # 無論是否為 Node 專案，都打包；排除 .git 與 node_modules，避免檔案太大
+      - name: Archive workspace
+        run: |
+          zip -r build.zip . -x ".git/*" "node_modules/*"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
