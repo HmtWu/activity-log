@@ -174,8 +174,7 @@ jobs:
             gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
           fi
 
-  # === Staging 用動態標籤（同一份 artifact）===
-  DeployStaging:
+    DeployStaging:
     name: Deploy to Staging
     needs: [Build]
     runs-on: ubuntu-latest
@@ -191,24 +190,47 @@ jobs:
       - name: Print tag being released (Staging)
         run: echo "TAG=${{ needs.Build.outputs.staging_tag }}"
 
+      # 取得前一個「staging-*」tag，供 notes 起點使用
+      - name: Find previous staging tag
+        id: prev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 讀取所有 release tag，挑出 staging-*，排除目前這個，取最新一個
+          PREV=$(gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep -E '^staging-v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$' \
+            | grep -v -F "${{ needs.Build.outputs.staging_tag }}" \
+            | head -n1)
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Previous staging tag: ${PREV:-<none>}"
+
       - name: Release Staging Build (dynamic tag + auto notes)
+        id: rel
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.staging_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
+          PREV: ${{ steps.prev.outputs.prev }}
         run: |
           set -e
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "⚠️ $TAG already exists. Skipping."
           else
+            # 若找到上一個 staging tag，就用 --notes-start-tag 限定比較範圍
+            EXTRA_ARGS=()
+            if [ -n "$PREV" ]; then
+              EXTRA_ARGS+=(--notes-start-tag "$PREV")
+            fi
+
             if [ -z "$NOTE" ]; then
-              gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
+              gh release create "$TAG" build.zip --prerelease --generate-notes "${EXTRA_ARGS[@]}" --repo "$REPO"
             else
-              gh release create "$TAG" build.zip --generate-notes --notes "$NOTE" --repo "$REPO"
+              gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" "${EXTRA_ARGS[@]}" --repo "$REPO"
             fi
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   # === Production：需要 Staging 成功 + 受保護環境審核 ===
   DeployProd:
