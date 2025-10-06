@@ -2,6 +2,11 @@ name: CI/CD Deployment Pipeline
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Optional version bump: major | minor | patch（留空不變）'
+        required: false
+        default: ''
   push:
     branches: [ master ]   # 若你的預設分支是 main，改成 [ main ]
 
@@ -13,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # === 新增：多版本測試矩陣（Node 18 / 20）===
+  # === Step 1：多版本測試矩陣（Node 18 / 20）===
   Test:
     name: Lint & Test (matrix)
     runs-on: ubuntu-latest
@@ -45,8 +50,14 @@ jobs:
 
   Build:
     name: Build
-    needs: [Test]     # ← 讓 Build 等待 Test 矩陣全數通過
+    needs: [Test]
     runs-on: ubuntu-latest
+    # === Step 2：把版本與標籤輸出成 job outputs，供後續部署使用 ===
+    outputs:
+      version:      ${{ steps.meta.outputs.version }}
+      staging_tag:  ${{ steps.meta.outputs.staging_tag }}
+      prod_tag:     ${{ steps.meta.outputs.prod_tag }}
+      dev_tag:      ${{ steps.meta.outputs.dev_tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -55,6 +66,41 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # === Step 2：計算版本與標籤（關鍵步驟）===
+      - name: Compute Version & Tags (O-level)
+        id: meta
+        shell: bash
+        run: |
+          # 讀 package.json version；若無則 fallback 1.0.0
+          if [ -f package.json ]; then
+            BASE_VERSION=$(node -p "require('./package.json').version || '1.0.0'")
+          else
+            BASE_VERSION="1.0.0"
+          fi
+
+          # 支援 workflow_dispatch bump（major/minor/patch），留空則不變
+          BUMP="${{ github.event.inputs.bump }}"
+          if [ -n "$BUMP" ]; then
+            IFS='.' read -r MA MI PA <<< "$(echo "$BASE_VERSION" | sed 's/-.*//')"
+            case "$BUMP" in
+              major) MA=$((MA+1)); MI=0; PA=0 ;;
+              minor) MI=$((MI+1)); PA=0 ;;
+              patch|*) PA=$((PA+1)) ;;
+            esac
+            BASE_VERSION="${MA}.${MI}.${PA}"
+          fi
+
+          RUN_NO="${GITHUB_RUN_NUMBER}"
+
+          STAGING_TAG="staging-v${BASE_VERSION}-rc.${RUN_NO}"
+          PROD_TAG="prod-v${BASE_VERSION}"
+          DEV_TAG="dev-v${BASE_VERSION}-alpha.${RUN_NO}"
+
+          echo "version=$BASE_VERSION"    >> "$GITHUB_OUTPUT"
+          echo "staging_tag=$STAGING_TAG" >> "$GITHUB_OUTPUT"
+          echo "prod_tag=$PROD_TAG"       >> "$GITHUB_OUTPUT"
+          echo "dev_tag=$DEV_TAG"         >> "$GITHUB_OUTPUT"
 
       - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
@@ -79,6 +125,7 @@ jobs:
           path: build.zip
           retention-days: 7
 
+  # 可選：Dev 也接軌動態版號（若不需要可保留你原本寫法）
   DeployDev:
     name: Deploy to Dev
     needs: [Build]
@@ -91,11 +138,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Release Dev Build
+      - name: Release Dev Build (dynamic tag)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TAG: ${{ vars.BUILD_TAG }}
+          TAG: ${{ needs.Build.outputs.dev_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
@@ -103,7 +150,7 @@ jobs:
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
+            gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
           fi
 
   DeployStaging:
@@ -118,11 +165,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Release Staging Build
+      - name: Release Staging Build (dynamic tag + auto notes)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TAG: ${{ vars.BUILD_TAG }}
+          TAG: ${{ needs.Build.outputs.staging_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
@@ -130,7 +177,11 @@ jobs:
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
+            if [ -z "$NOTE" ]; then
+              gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
+            else
+              gh release create "$TAG" build.zip --generate-notes --notes "$NOTE" --repo "$REPO"
+            fi
           fi
 
   DeployProd:
@@ -139,17 +190,17 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: Production       # 要和 Settings → Environments 名稱完全一致
+      name: Production       # 要和 Settings → Environments 名稱完全一致（需設 Required reviewers）
       url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Release Production Build
+      - name: Release Production Build (dynamic tag + auto notes)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TAG: ${{ vars.BUILD_TAG }}
+          TAG: ${{ needs.Build.outputs.prod_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
@@ -157,5 +208,9 @@ jobs:
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "⚠️ $TAG already exists. Skipping."
           else
-            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
+            if [ -z "$NOTE" ]; then
+              gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
+            else
+              gh release create "$TAG" build.zip --generate-notes --notes "$NOTE" --repo "$REPO"
+            fi
           fi
