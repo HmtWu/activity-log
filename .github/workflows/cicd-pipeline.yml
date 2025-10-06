@@ -13,8 +13,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # === 新增：多版本測試矩陣（Node 18 / 20）===
+  Test:
+    name: Lint & Test (matrix)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install
+        if: ${{ hashFiles('**/package.json') != '' }}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Lint (if present)
+        run: npm run lint --if-present
+
+      - name: Test (if present)
+        run: npm test --if-present
+
   Build:
     name: Build
+    needs: [Test]     # ← 讓 Build 等待 Test 矩陣全數通過
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
