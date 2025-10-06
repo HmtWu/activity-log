@@ -8,7 +8,7 @@ on:
         required: false
         default: ''
   push:
-    branches: [ master ]   # 若你的預設分支是 main，改成 [ main ]
+    branches: [ master ]   # 若預設分支是 main，改成 [ main ]
 
 permissions:
   contents: write
@@ -48,11 +48,12 @@ jobs:
       - name: Test (if present)
         run: npm test --if-present
 
+  # === Build：計算版本/標籤 → 產物 → 上傳 ===
   Build:
     name: Build
     needs: [Test]
     runs-on: ubuntu-latest
-    # === Step 2：把版本與標籤輸出成 job outputs，供後續部署使用 ===
+    # 將版本/標籤透過 job outputs 提供給後續部署使用
     outputs:
       version:      ${{ steps.meta.outputs.version }}
       staging_tag:  ${{ steps.meta.outputs.staging_tag }}
@@ -102,6 +103,22 @@ jobs:
           echo "prod_tag=$PROD_TAG"       >> "$GITHUB_OUTPUT"
           echo "dev_tag=$DEV_TAG"         >> "$GITHUB_OUTPUT"
 
+      # 顯示輸出到 Logs 與 Step Summary（方便你看到）
+      - name: Show computed version & tags
+        run: |
+          echo "version=${{ steps.meta.outputs.version }}"
+          echo "staging_tag=${{ steps.meta.outputs.staging_tag }}"
+          echo "prod_tag=${{ steps.meta.outputs.prod_tag }}"
+          echo "dev_tag=${{ steps.meta.outputs.dev_tag }}"
+          {
+            echo "## Build metadata"
+            echo ""
+            echo "- version: \`${{ steps.meta.outputs.version }}\`"
+            echo "- staging_tag: \`${{ steps.meta.outputs.staging_tag }}\`"
+            echo "- prod_tag: \`${{ steps.meta.outputs.prod_tag }}\`"
+            echo "- dev_tag: \`${{ steps.meta.outputs.dev_tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: oven-sh/setup-bun@v2
@@ -125,7 +142,7 @@ jobs:
           path: build.zip
           retention-days: 7
 
-  # 可選：Dev 也接軌動態版號（若不需要可保留你原本寫法）
+  # === （可選）Dev 用動態標籤 ===
   DeployDev:
     name: Deploy to Dev
     needs: [Build]
@@ -138,6 +155,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
+
+      - name: Print tag being released (Dev)
+        run: echo "TAG=${{ needs.Build.outputs.dev_tag }}"
+
       - name: Release Dev Build (dynamic tag)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,6 +174,7 @@ jobs:
             gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
           fi
 
+  # === Staging 用動態標籤（同一份 artifact）===
   DeployStaging:
     name: Deploy to Staging
     needs: [Build]
@@ -165,6 +187,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
+
+      - name: Print tag being released (Staging)
+        run: echo "TAG=${{ needs.Build.outputs.staging_tag }}"
+
       - name: Release Staging Build (dynamic tag + auto notes)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -184,18 +210,23 @@ jobs:
             fi
           fi
 
+  # === Production：需要 Staging 成功 + 受保護環境審核 ===
   DeployProd:
     name: Deploy to Production
-    needs: [DeployStaging]   # E 要求：Staging 成功後才進 Production
+    needs: [DeployStaging]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
-      name: Production       # 要和 Settings → Environments 名稱完全一致（需設 Required reviewers）
+      name: Production       # 必須和 Settings → Environments 名稱一致，且設 Required reviewers
       url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
+
+      - name: Print tag being released (Prod)
+        run: echo "TAG=${{ needs.Build.outputs.prod_tag }}"
+
       - name: Release Production Build (dynamic tag + auto notes)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
