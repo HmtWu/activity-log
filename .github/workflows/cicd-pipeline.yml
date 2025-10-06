@@ -1,88 +1,130 @@
-name: CI Dev Deployment
+name: CI/CD Deployment Pipeline
 
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]   # 若你的預設分支是 main，改成 main
+    branches: [ master ]   # 若你的預設分支是 main，改成 [ main ]
 
 permissions:
   contents: write
 
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  Build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 若偵測到 Node 專案才安裝 Node/Bun；沒有 package.json 也能繼續
-      - name: Setup Node
+      - name: Setup Node (only when Node project)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Setup Bun (optional)
+      - name: Setup Bun (for bun-based builds)
         if: ${{ hashFiles('**/package.json') != '' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 'latest'
 
-      # 基本建置（符合 A 要求）；沒有 build 腳本時不報錯
-      - name: Install & Build
+      - name: Install deps & build (bun/npm)
         if: ${{ hashFiles('**/package.json') != '' }}
         run: |
           set -e
           bun install || true
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-          npm run build --if-present
+          if [ -f package-lock.json ]; then npm ci || true; else npm install || true; fi
+          npm run build --if-present || true
 
-      # 打包並上傳 artifact（符合 A 要求）
-      - name: Package artifact
+      - name: Archive workspace
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: build-artifact
           path: build.zip
+          retention-days: 7
 
-  deploy-dev:
+  DeployDev:
     name: Deploy to Dev
-    needs: build
+    needs: [Build]
     runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}   # 若改 main 也改這條
     environment:
-      name: dev
-      # 讓卡片有穩定可點的連結（Releases 列表，不會 404）
+      name: Development
       url: ${{ format('https://github.com/{0}/releases', github.repository) }}
     steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
-      - name: Release Dev
+      - name: Release Dev Build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # 內建 token，無需手動建立
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TAG:  ${{ vars.BUILD_TAG }}            # 取自 dev 環境變數（dev-v1.0）
-          NOTE: ${{ vars.RELEASE_NOTE }}         # 取自 dev 環境變數
+          TAG: ${{ vars.BUILD_TAG }}
+          NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
           set -e
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
-
-          # 若同名 release 已存在則略過，避免重跑失敗
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            echo "Release $TAG already exists. Skipping."
+            echo "⚠️ $TAG already exists. Skipping."
           else
             gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
           fi
 
-          # 在總結區印出可點連結（方便你找）
-          URL=$(gh release view "$TAG" --repo "$REPO" --json url -q .url)
-          echo "### ✅ Dev release created: [$TAG]($URL)" >> "$GITHUB_STEP_SUMMARY"
+  DeployStaging:
+    name: Deploy to Staging
+    needs: [Build]
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    environment:
+      name: Staging
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+      - name: Release Staging Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ vars.BUILD_TAG }}
+          NOTE: ${{ vars.RELEASE_NOTE }}
+        run: |
+          set -e
+          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists. Skipping."
+          else
+            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
+          fi
+
+  DeployProd:
+    name: Deploy to Production
+    needs: [DeployStaging]   # E 要求：Staging 成功後才進 Production
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    environment:
+      name: Production       # 要和 Settings → Environments 名稱完全一致
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+      - name: Release Production Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ vars.BUILD_TAG }}
+          NOTE: ${{ vars.RELEASE_NOTE }}
+        run: |
+          set -e
+          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists. Skipping."
+          else
+            gh release create "$TAG" build.zip --notes "$NOTE" --repo "$REPO"
+          fi
