@@ -174,7 +174,7 @@ jobs:
             gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
           fi
 
-    DeployStaging:
+  DeployStaging:
     name: Deploy to Staging
     needs: [Build]
     runs-on: ubuntu-latest
