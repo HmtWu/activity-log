@@ -2,8 +2,8 @@ name: Update GitHub Activity
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # Runs every 30 minutes
-  workflow_dispatch:
+    - cron: "*/30 * * * *"   # Runs every 30 minutes
+  workflow_dispatch:         # Allows manual triggering
 
 permissions:
   contents: write
@@ -12,13 +12,15 @@ jobs:
   update-activity:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
+      # 保留老師寫法：使用倉庫根目錄的 action（就是我們等下要新增的 action.yml）
       - name: Run Update GitHub Activity
-        uses: thedannicraft/update-github-activity@v1
+        uses: ./
         with:
+          # 下面這些是你原本的參數；真正會用到的我已在 composite action 內轉接
           GITHUB_USERNAME: "thedannicraft"
+          # 不需要自建 TOKEN；直接用 GitHub 內建 token 即可
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_LIMIT: 10
           OUTPUT_STYLE: MARKDOWN
