@@ -2,15 +2,11 @@ name: Update GitHub Activity
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/30 * * * *" # Runs every 30 minutes
   workflow_dispatch:
 
 permissions:
   contents: write
-
-concurrency:
-  group: update-activity
-  cancel-in-progress: true
 
 jobs:
   update-activity:
@@ -18,15 +14,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # 🔧 把這一行改成“實際存在的 action”
-      # 1) 如果你的 action 在 .github/actions/update-activity/ 底下
-      #    就用 uses: ./.github/actions/update-activity
-      # 2) 如果要用老師/上游的 action，改成 uses: <owner>/<repo>@<tag or sha>
       - name: Run Update GitHub Activity
-        uses: ./.github/actions/update-activity
+        uses: thedannicraft/update-github-activity@v1
         with:
           GITHUB_USERNAME: "thedannicraft"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
