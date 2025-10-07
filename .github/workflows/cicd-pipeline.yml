@@ -68,7 +68,7 @@ jobs:
         with:
           node-version: '20'
 
-      # === 🔥 自動偵測 bump 類型 ===
+      # === 🔥 新增：自動偵測 bump 類型 ===
       - name: Detect bump type automatically
         id: detect
         shell: bash
@@ -92,12 +92,14 @@ jobs:
         id: meta
         shell: bash
         run: |
+          # 從 package.json 抓目前版本
           if [ -f package.json ]; then
             BASE_VERSION=$(node -p "require('./package.json').version || '1.0.0'")
           else
             BASE_VERSION="1.0.0"
           fi
 
+          # 若有手動輸入 bump，覆蓋自動偵測
           if [ -n "${{ github.event.inputs.bump }}" ]; then
             BUMP="${{ github.event.inputs.bump }}"
           else
@@ -106,6 +108,7 @@ jobs:
 
           echo "最終使用的 bump 類型: ${BUMP:-無}"
 
+          # 根據 bump 類型修改版本號
           if [ -n "$BUMP" ]; then
             IFS='.' read -r MA MI PA <<< "$(echo "$BASE_VERSION" | sed 's/-.*//')"
             case "$BUMP" in
@@ -126,6 +129,7 @@ jobs:
           echo "prod_tag=$PROD_TAG"       >> "$GITHUB_OUTPUT"
           echo "dev_tag=$DEV_TAG"         >> "$GITHUB_OUTPUT"
 
+      # === 顯示輸出結果 ===
       - name: Show computed version & tags
         run: |
           echo "version=${{ steps.meta.outputs.version }}"
@@ -151,4 +155,87 @@ jobs:
       - name: Archive workspace
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
 
-      - uses: actions/upload-artifact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: build.zip
+          retention-days: 7
+
+  # === 部署到 Dev ===
+  DeployDev:
+    name: Deploy to Dev
+    needs: [Build]
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    environment:
+      name: Development
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+
+      - name: Release Dev Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.Build.outputs.dev_tag }}
+        run: |
+          set -e
+          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          gh release create "$TAG" build.zip --prerelease --generate-notes --repo "$REPO"
+
+  # === 部署到 Staging ===
+  DeployStaging:
+    name: Deploy to Staging
+    needs: [Build]
+    runs-on: ubuntu-latest
+    environment:
+      name: Staging
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+
+      - name: Release Staging Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.Build.outputs.staging_tag }}
+        run: |
+          set -e
+          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          gh release create "$TAG" build.zip --prerelease --generate-notes --repo "$REPO"
+
+  # === 部署到 Production ===
+  DeployProd:
+    name: Deploy to Production
+    needs: [DeployStaging]
+    needs: [Build, DeployStaging]   # ✅ 同時依賴 Build
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    environment:
+      name: Production
+      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+@@ -221,12 +221,21 @@
+        with:
+          name: build-artifact
+
+      - name: Print tag being released (Prod)
+        run: echo "TAG=${{ needs.Build.outputs.prod_tag }}"
+
+      - name: Release Production Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.Build.outputs.prod_tag }}
+        run: |
+          set -e
+          echo "Releasing $TAG ..."
+          if [ -z "$TAG" ]; then
+            echo "❌ TAG 未定義，請檢查 Build job 是否成功產出 tag"
+            exit 1
+          fi
+          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
