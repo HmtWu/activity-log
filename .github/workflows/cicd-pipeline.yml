@@ -182,7 +182,7 @@ jobs:
           VERSION: ${{ needs.Build.outputs.version }}
           TAG: ${{ needs.Build.outputs.prod_tag }}
         run: |
-          MESSAGE="✅ *Development Build Successful!*
+          MESSAGE="✅ *Dev Build Successful!*
           • Version: \`${VERSION}\`  
           • Tag: \`${TAG}\`  
           • Repository: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
@@ -197,7 +197,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           VERSION: ${{ needs.Build.outputs.version }}
         run: |
-          MESSAGE="❌ *Development Build Failed!*  
+          MESSAGE="❌ *Dev Build Failed!*  
           • Version: \`${VERSION}\`  
           • Check logs: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           curl -X POST -H 'Content-type: application/json' \
