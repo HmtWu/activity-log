@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Optional version bump: major | minor | patch（留空則自動偵測）'
+        description: 'Optional version bump: major | minor | patch（留空自動偵測）'
         required: false
         default: ''
   push:
-    branches: [ master ]   # 若預設分支是 main，改成 [ main ]
+    branches: [ master ]
 
 permissions:
   contents: write
@@ -27,7 +27,6 @@ jobs:
         node-version: [18, 20]
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -41,107 +40,104 @@ jobs:
           else
             npm install
           fi
+
       - name: Lint (if present)
         run: npm run lint --if-present
 
       - name: Test (if present)
         run: npm test --if-present
 
-  # === Build：自動偵測版本升級 + 計算標籤 ===
+  # === Build：版本計算與產物 ===
   Build:
     name: Build
     needs: [Test]
     runs-on: ubuntu-latest
     outputs:
-      version:      ${{ steps.meta.outputs.version }}
-      staging_tag:  ${{ steps.meta.outputs.staging_tag }}
-      prod_tag:     ${{ steps.meta.outputs.prod_tag }}
-      dev_tag:      ${{ steps.meta.outputs.dev_tag }}
+      version: ${{ steps.meta.outputs.version }}
+      dev_tag: ${{ steps.meta.outputs.dev_tag }}
+      staging_tag: ${{ steps.meta.outputs.staging_tag }}
+      prod_tag: ${{ steps.meta.outputs.prod_tag }}
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node
-        if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # === 🔥 新增：自動偵測 bump 類型 ===
+      # === Step 2：自動偵測 bump 類型 ===
       - name: Detect bump type automatically
-        id: detect
-        shell: bash
+        id: bumpdetect
         run: |
           MSG=$(git log -1 --pretty=%B | tr '[:upper:]' '[:lower:]')
           echo "最近一次 commit message: $MSG"
           if [[ "$MSG" == *"breaking change"* ]]; then
-            TYPE="major"
+            DETECTED="major"
           elif [[ "$MSG" == *"feat:"* ]]; then
-            TYPE="minor"
+            DETECTED="minor"
           elif [[ "$MSG" == *"fix:"* ]]; then
-            TYPE="patch"
+            DETECTED="patch"
           else
-            TYPE=""
+            DETECTED="none"
           fi
-          echo "type=$TYPE" >> "$GITHUB_OUTPUT"
-          echo "自動偵測結果：${TYPE:-無變更}"
-      # === 計算版本與標籤 ===
+          echo "自動偵測結果: $DETECTED"
+          echo "detected=$DETECTED" >> "$GITHUB_OUTPUT"
+
+      # === Step 3：計算版本與標籤 ===
       - name: Compute Version & Tags (O-level)
         id: meta
         shell: bash
         run: |
-          # 從 package.json 抓目前版本
           if [ -f package.json ]; then
             BASE_VERSION=$(node -p "require('./package.json').version || '1.0.0'")
           else
             BASE_VERSION="1.0.0"
           fi
-          # 若有手動輸入 bump，覆蓋自動偵測
-          if [ -n "${{ github.event.inputs.bump }}" ]; then
-            BUMP="${{ github.event.inputs.bump }}"
-          else
-            BUMP="${{ steps.detect.outputs.type }}"
+
+          BUMP="${{ github.event.inputs.bump }}"
+          AUTO="${{ steps.bumpdetect.outputs.detected }}"
+
+          if [ "$BUMP" = "" ]; then
+            if [ "$AUTO" != "none" ]; then
+              BUMP="$AUTO"
+            fi
           fi
-          echo "最終使用的 bump 類型: ${BUMP:-無}"
-          # 根據 bump 類型修改版本號
-          if [ -n "$BUMP" ]; then
+
+          echo "最終使用的 bump 類型: ${BUMP:-無變更}"
+
+          if [ -n "$BUMP" ] && [ "$BUMP" != "none" ]; then
             IFS='.' read -r MA MI PA <<< "$(echo "$BASE_VERSION" | sed 's/-.*//')"
             case "$BUMP" in
               major) MA=$((MA+1)); MI=0; PA=0 ;;
               minor) MI=$((MI+1)); PA=0 ;;
-              patch|*) PA=$((PA+1)) ;;
+              patch) PA=$((PA+1)) ;;
             esac
             BASE_VERSION="${MA}.${MI}.${PA}"
           fi
+
           RUN_NO="${GITHUB_RUN_NUMBER}"
+
+          DEV_TAG="dev-v${BASE_VERSION}-alpha.${RUN_NO}"
           STAGING_TAG="staging-v${BASE_VERSION}-rc.${RUN_NO}"
           PROD_TAG="prod-v${BASE_VERSION}"
-          DEV_TAG="dev-v${BASE_VERSION}-alpha.${RUN_NO}"
-          echo "version=$BASE_VERSION"    >> "$GITHUB_OUTPUT"
+
+          echo "version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "dev_tag=$DEV_TAG" >> "$GITHUB_OUTPUT"
           echo "staging_tag=$STAGING_TAG" >> "$GITHUB_OUTPUT"
-          echo "prod_tag=$PROD_TAG"       >> "$GITHUB_OUTPUT"
-          echo "dev_tag=$DEV_TAG"         >> "$GITHUB_OUTPUT"
-      # === 顯示輸出結果 ===
-      - name: Show computed version & tags
-        run: |
-          echo "version=${{ steps.meta.outputs.version }}"
-          echo "staging_tag=${{ steps.meta.outputs.staging_tag }}"
-          echo "prod_tag=${{ steps.meta.outputs.prod_tag }}"
-          echo "dev_tag=${{ steps.meta.outputs.dev_tag }}"
-          {
-            echo "## Build metadata"
-            echo ""
-            echo "- version: \`${{ steps.meta.outputs.version }}\`"
-            echo "- staging_tag: \`${{ steps.meta.outputs.staging_tag }}\`"
-            echo "- prod_tag: \`${{ steps.meta.outputs.prod_tag }}\`"
-            echo "- dev_tag: \`${{ steps.meta.outputs.dev_tag }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "產生版本: $BASE_VERSION"
+          echo "dev_tag=$DEV_TAG"
+          echo "staging_tag=$STAGING_TAG"
+          echo "prod_tag=$PROD_TAG"
+
       - name: Install deps & build
-        if: ${{ hashFiles('**/package.json') != '' }}
         run: |
-          set -e
-          npm ci || npm install
-          npm run build --if-present || true
+          if [ -f package.json ]; then
+            npm ci || npm install
+            npm run build --if-present
+          fi
+
       - name: Archive workspace
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
 
@@ -149,80 +145,64 @@ jobs:
         with:
           name: build-artifact
           path: build.zip
-          retention-days: 7
 
-  # === 部署到 Dev ===
+  # === Deploy to Dev ===
   DeployDev:
     name: Deploy to Dev
     needs: [Build]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}
-    environment:
-      name: Development
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Development
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
       - name: Release Dev Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.dev_tag }}
         run: |
-          set -e
-          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          gh auth login --with-token <<< "$GH_TOKEN"
           gh release create "$TAG" build.zip --prerelease --generate-notes --repo "$REPO"
-  # === 部署到 Staging ===
+
+  # === Deploy to Staging ===
   DeployStaging:
     name: Deploy to Staging
     needs: [Build]
     runs-on: ubuntu-latest
-    environment:
-      name: Staging
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Staging
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
       - name: Release Staging Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.staging_tag }}
         run: |
-          set -e
-          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+          gh auth login --with-token <<< "$GH_TOKEN"
           gh release create "$TAG" build.zip --prerelease --generate-notes --repo "$REPO"
+
+  # === Deploy to Production ===
   DeployProd:
     name: Deploy to Production
-    needs: [Build, DeployStaging]   # ✅ 同時依賴 Build
+    needs: [Build, DeployStaging]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}
-    environment:
-      name: Production
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Production
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-
-      - name: Print tag being released (Prod)
-        run: echo "TAG=${{ needs.Build.outputs.prod_tag }}"
-
-      - name: Release Production Build
+      - name: Release Production Build (safe)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.prod_tag }}
         run: |
-          set -e
-          echo "Releasing $TAG ..."
-          if [ -z "$TAG" ]; then
-            echo "❌ TAG 未定義，請檢查 Build job 是否成功產出 tag"
-            exit 1
+          gh auth login --with-token <<< "$GH_TOKEN"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "⚠️ Release $TAG already exists, skipping."
+            exit 0
           fi
-          gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
           gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
