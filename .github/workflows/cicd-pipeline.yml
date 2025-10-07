@@ -208,11 +208,11 @@ jobs:
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
           gh release create "$TAG" build.zip --prerelease --generate-notes --repo "$REPO"
 
-  # === 部署到 Production ===
   DeployProd:
     name: Deploy to Production
-    needs: [DeployStaging]
+    needs: [Build, DeployStaging]   # ✅ 同時依賴 Build
     runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
     environment:
       name: Production
       url: ${{ format('https://github.com/{0}/releases', github.repository) }}
@@ -221,6 +221,9 @@ jobs:
         with:
           name: build-artifact
 
+      - name: Print tag being released (Prod)
+        run: echo "TAG=${{ needs.Build.outputs.prod_tag }}"
+
       - name: Release Production Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -228,5 +231,11 @@ jobs:
           TAG: ${{ needs.Build.outputs.prod_tag }}
         run: |
           set -e
+          echo "Releasing $TAG ..."
+          if [ -z "$TAG" ]; then
+            echo "❌ TAG 未定義，請檢查 Build job 是否成功產出 tag"
+            exit 1
+          fi
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
           gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
+        
