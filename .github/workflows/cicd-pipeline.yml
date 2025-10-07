@@ -180,14 +180,13 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           VERSION: ${{ needs.Build.outputs.version }}
-          TAG: ${{ needs.Build.outputs.prod_tag }}
+          TAG: ${{ needs.Build.outputs.dev_tag }}
+          REPO: ${{ github.repository }}
         run: |
-          MESSAGE="✅ *Dev Build Successful!*
-          • Version: \`${VERSION}\`  
-          • Tag: \`${TAG}\`  
-          • Repository: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          set -e
+          MESSAGE="✅ *Dev Build Successful!*%0A• Version: \`${VERSION}\`%0A• Tag: \`${TAG}\`%0A• Repository: https://github.com/${REPO}/releases/tag/${TAG}"
           curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"${MESSAGE}\"}" \
+            --data "{\"text\": \"$MESSAGE\"}" \
             "$SLACK_WEBHOOK_URL"
 
       # === 失敗通知 Slack ===
@@ -196,12 +195,13 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           VERSION: ${{ needs.Build.outputs.version }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          MESSAGE="❌ *Dev Build Failed!*  
-          • Version: \`${VERSION}\`  
-          • Check logs: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          set -e
+          MESSAGE="❌ *Dev Build Failed!*%0A• Version: \`${VERSION}\`%0A• Check logs: https://github.com/${REPO}/actions/runs/${RUN_ID}"
           curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"${MESSAGE}\"}" \
+            --data "{\"text\": \"$MESSAGE\"}" \
             "$SLACK_WEBHOOK_URL"
   # === 部署到 Staging ===
   DeployStaging:
