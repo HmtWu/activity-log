@@ -225,4 +225,15 @@ jobs:
             exit 1
           fi
           gh auth status || gh auth login --with-token <<< "$GH_TOKEN"
+
+          # === 若 release 已存在，則先刪除舊的 ===
+          if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
+            echo "⚠️ Release $TAG 已存在，將先刪除舊的 release 與 tag..."
+            gh release delete "$TAG" --repo "$REPO" --yes || true
+            git push origin ":refs/tags/$TAG" || true
+          fi
+
+          # === 重新建立 release ===
+          echo "🚀 建立新的 Release: $TAG"
           gh release create "$TAG" build.zip --generate-notes --repo "$REPO"
+
