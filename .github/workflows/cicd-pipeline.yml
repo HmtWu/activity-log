@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Optional version bump: major | minor | patch（留空不變）'
+        description: 'Optional version bump: major | minor | patch（留空不變，自動偵測）'
         required: false
         default: ''
   push:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # === Step 1：多版本測試矩陣 ===
+  # === 1️⃣ Test：多版本矩陣（Node 18 / 20）===
   Test:
     name: Lint & Test (matrix)
     runs-on: ubuntu-latest
@@ -31,8 +31,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Install
-        if: ${{ hashFiles('**/package.json') != '' }}
+      - name: Install deps
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - name: Lint (if present)
@@ -40,32 +39,29 @@ jobs:
       - name: Test (if present)
         run: npm test --if-present
 
-  # === Build：計算版本/標籤 → 產物 → 上傳 ===
+  # === 2️⃣ Build：版本計算 / 產出 build artifact ===
   Build:
     name: Build
     needs: [Test]
     runs-on: ubuntu-latest
     outputs:
       version:      ${{ steps.meta.outputs.version }}
+      dev_tag:      ${{ steps.meta.outputs.dev_tag }}
       staging_tag:  ${{ steps.meta.outputs.staging_tag }}
       prod_tag:     ${{ steps.meta.outputs.prod_tag }}
-      dev_tag:      ${{ steps.meta.outputs.dev_tag }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node
-        if: ${{ hashFiles('**/package.json') != '' }}
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      # === 🔹 新增：自動偵測 bump 類型 ===
+      # 自動偵測 bump 類型
       - name: Detect bump type automatically
         id: bump
-        shell: bash
         run: |
           MSG=$(git log -1 --pretty=%B | tr '[:upper:]' '[:lower:]')
-          echo "Last commit message: $MSG"
+          echo "最近一次 commit: $MSG"
           if [[ "$MSG" == *"breaking change"* ]]; then
             TYPE=major
           elif [[ "$MSG" == *"feat:"* ]]; then
@@ -76,12 +72,10 @@ jobs:
             TYPE=""
           fi
           echo "type=$TYPE" >> "$GITHUB_OUTPUT"
-          echo "Detected bump type: ${TYPE:-none}"
 
-      # === 計算版本與標籤（整合手動 + 自動）===
+      # 計算版本與 tag
       - name: Compute Version & Tags (O-level)
         id: meta
-        shell: bash
         run: |
           if [ -f package.json ]; then
             BASE_VERSION=$(node -p "require('./package.json').version || '1.0.0'")
@@ -89,9 +83,9 @@ jobs:
             BASE_VERSION="1.0.0"
           fi
 
-          # 若手動 bump 留空，改採自動偵測結果
+          # 優先使用手動輸入，其次自動偵測
           BUMP="${{ github.event.inputs.bump || steps.bump.outputs.type }}"
-          echo "Final bump type: ${BUMP:-none}"
+          echo "最終 bump 類型: ${BUMP:-none}"
 
           if [ -n "$BUMP" ]; then
             IFS='.' read -r MA MI PA <<< "$(echo "$BASE_VERSION" | sed 's/-.*//')"
@@ -104,129 +98,146 @@ jobs:
           fi
 
           RUN_NO="${GITHUB_RUN_NUMBER}"
-
+          DEV_TAG="dev-v${BASE_VERSION}-alpha.${RUN_NO}"
           STAGING_TAG="staging-v${BASE_VERSION}-rc.${RUN_NO}"
           PROD_TAG="prod-v${BASE_VERSION}"
-          DEV_TAG="dev-v${BASE_VERSION}-alpha.${RUN_NO}"
 
-          echo "version=$BASE_VERSION"    >> "$GITHUB_OUTPUT"
+          echo "version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "dev_tag=$DEV_TAG" >> "$GITHUB_OUTPUT"
           echo "staging_tag=$STAGING_TAG" >> "$GITHUB_OUTPUT"
-          echo "prod_tag=$PROD_TAG"       >> "$GITHUB_OUTPUT"
-          echo "dev_tag=$DEV_TAG"         >> "$GITHUB_OUTPUT"
+          echo "prod_tag=$PROD_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Show computed version & tags
+      - name: Show computed tags
         run: |
           echo "version=${{ steps.meta.outputs.version }}"
+          echo "dev_tag=${{ steps.meta.outputs.dev_tag }}"
           echo "staging_tag=${{ steps.meta.outputs.staging_tag }}"
           echo "prod_tag=${{ steps.meta.outputs.prod_tag }}"
-          echo "dev_tag=${{ steps.meta.outputs.dev_tag }}"
-          {
-            echo "## Build metadata"
-            echo "- version: \`${{ steps.meta.outputs.version }}\`"
-            echo "- staging_tag: \`${{ steps.meta.outputs.staging_tag }}\`"
-            echo "- prod_tag: \`${{ steps.meta.outputs.prod_tag }}\`"
-            echo "- dev_tag: \`${{ steps.meta.outputs.dev_tag }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Setup Bun
-        if: ${{ hashFiles('**/package.json') != '' }}
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 'latest'
-
-      - name: Install deps & build
-        if: ${{ hashFiles('**/package.json') != '' }}
+      - name: Install & Build
         run: |
-          set -e
-          bun install || true
-          if [ -f package-lock.json ]; then npm ci || true; else npm install || true; fi
+          npm ci || npm install
           npm run build --if-present || true
 
-      - name: Archive workspace
+      - name: Archive build
         run: zip -r build.zip . -x ".git/*" "node_modules/*"
 
       - uses: actions/upload-artifact@v4
         with:
           name: build-artifact
           path: build.zip
-          retention-days: 7
 
-  # === 其餘 Deploy job 保持原樣 ===
+  # === 3️⃣ Deploy to Dev ===
   DeployDev:
     name: Deploy to Dev
     needs: [Build]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
-    environment:
-      name: Development
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Development
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Print tag being released (Dev)
-        run: echo "TAG=${{ needs.Build.outputs.dev_tag }}"
       - name: Release Dev Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.dev_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
-          set -e
-          gh auth login --with-token <<< "$GH_TOKEN"
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            echo "⚠️ $TAG exists."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ $TAG already exists."
           else
-            gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
+            gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE"
           fi
 
+  # === 4️⃣ Deploy to Staging ===
   DeployStaging:
     name: Deploy to Staging
     needs: [Build]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
-    environment:
-      name: Staging
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Staging
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Print tag being released (Staging)
-        run: echo "TAG=${{ needs.Build.outputs.staging_tag }}"
       - name: Release Staging Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.staging_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
-          set -e
-          gh auth login --with-token <<< "$GH_TOKEN"
-          gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE" --repo "$REPO"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ $TAG exists. Skipping."
+          else
+            gh release create "$TAG" build.zip --prerelease --generate-notes --notes "$NOTE"
+          fi
 
+      # 失敗時自動清理
+      - name: Cleanup on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.Build.outputs.staging_tag }}
+        run: |
+          echo "🧹 Cleaning failed release..."
+          gh release delete "$TAG" -y || true
+          git push origin ":refs/tags/$TAG" || true
+
+      # 通知 Slack
+      - name: Notify Slack (staging)
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TAG: ${{ needs.Build.outputs.staging_tag }}
+        run: |
+          MSG="*[Staging]* job status: *$STATUS* for tag \`$TAG\`"
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"$MSG\"}" \
+            "$SLACK_WEBHOOK_URL"
+
+  # === 5️⃣ Deploy to Production ===
   DeployProd:
     name: Deploy to Production
     needs: [DeployStaging]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
-    environment:
-      name: Production
-      url: ${{ format('https://github.com/{0}/releases', github.repository) }}
+    environment: Production
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: build-artifact
-      - name: Print tag being released (Prod)
-        run: echo "TAG=${{ needs.Build.outputs.prod_tag }}"
       - name: Release Production Build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
           TAG: ${{ needs.Build.outputs.prod_tag }}
           NOTE: ${{ vars.RELEASE_NOTE }}
         run: |
-          set -e
-          gh auth login --with-token <<< "$GH_TOKEN"
-          gh release create "$TAG" build.zip --generate-notes --notes "$NOTE" --repo "$REPO"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ $TAG exists. Skipping."
+          else
+            gh release create "$TAG" build.zip --generate-notes --notes "$NOTE"
+          fi
+
+      - name: Cleanup on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.Build.outputs.prod_tag }}
+        run: |
+          echo "🧹 Cleaning failed release..."
+          gh release delete "$TAG" -y || true
+          git push origin ":refs/tags/$TAG" || true
+
+      - name: Notify Slack (prod)
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TAG: ${{ needs.Build.outputs.prod_tag }}
+        run: |
+          MSG="*[Production]* job status: *$STATUS* for tag \`$TAG\`"
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"$MSG\"}" \
+            "$SLACK_WEBHOOK_URL"
