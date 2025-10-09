@@ -7,7 +7,7 @@ on:
         description: 'Optional version bump: major | minor | patch（留空則自動偵測）'
         required: false
         default: ''
-  push:
+  push: 
     branches: [ master ]   # 若預設分支是 main，改成 [ main ]
 
 permissions:
