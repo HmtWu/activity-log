@@ -174,7 +174,7 @@ jobs:
   # === 部署到 Dev ===
   DeployDev:
     name: Deploy to Dev
-    needs: [AutomatedTest]
+    needs: [Build, AutomatedTest]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
@@ -231,7 +231,7 @@ jobs:
   # === 部署到 Staging ===
   DeployStaging:
     name: Deploy to Staging
-    needs: [AutomatedTest]
+    needs: [Build, AutomatedTest]
     runs-on: ubuntu-latest
     environment:
       name: Staging
@@ -281,7 +281,7 @@ jobs:
             "$SLACK_WEBHOOK_URL"
   DeployProd:
     name: Deploy to Production
-    needs: [DeployStaging, AutomatedTest]   # ✅ 同時依賴 Build
+    needs: [Build, DeployStaging, AutomatedTest]   # ✅ 同時依賴 Build
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
