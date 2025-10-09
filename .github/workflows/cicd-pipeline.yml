@@ -150,7 +150,28 @@ jobs:
           name: build-artifact
           path: build.zip
           retention-days: 7
+  # === 測試階段 ===
+  AutomatedTest:
+    name: Run Automated Tests
+    runs-on: ubuntu-latest
+    needs: [Build]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies for test
+        run: npm ci || npm install
+
+      - name: Run Automated Tests
+        run: |
+          echo "🧪 開始執行自動化測試..."
+          npm test || (echo "❌ 測試失敗，停止後續部署。" && exit 1)
   # === 部署到 Dev ===
   DeployDev:
     name: Deploy to Dev
