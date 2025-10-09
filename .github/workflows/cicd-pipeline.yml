@@ -148,7 +148,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: build-artifact
-          path: build.zip
+          path: ./
           retention-days: 7
   AutomatedTest:
     name: Run Automated Tests
@@ -159,17 +159,13 @@ jobs:
         with:
           name: build-artifact
 
-      # ✨ 新增這段解壓縮
-      - name: Unzip build artifact
-        run: unzip build-artifact.zip -d .
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install dependencies for test
-        run: npm install  # 改成這樣，不要用 npm ci
+        run: npm install
 
       - name: Run Automated Tests
         run: |
