@@ -282,7 +282,7 @@ jobs:
             "$SLACK_WEBHOOK_URL"
   DeployProd:
     name: Deploy to Production
-    needs: [Build, DeployStaging, AutomatedTest]   # ✅ 同時依賴 Build
+    needs: [DeployStaging, AutomatedTest]   # ✅ 同時依賴 Build
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' }}
     environment:
