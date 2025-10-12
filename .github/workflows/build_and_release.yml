@@ -166,10 +166,20 @@ jobs:
     runs-on: ubuntu-latest
     if: failure()
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Try to download coverage artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
           name: coverage-node-20
           path: ./coverage
+
+      - name: Fallback coverage summary
+        run: |
+          if [ ! -f ./coverage/summary.txt ]; then
+            mkdir -p coverage
+            echo "⚠️ Coverage report missing. Test job failed before upload." > coverage/summary.txt
+          fi
+
       - uses: peter-evans/create-issue-from-file@v5
         with:
           title: "❌ Automated Test Failure - ${{ github.run_id }}"
