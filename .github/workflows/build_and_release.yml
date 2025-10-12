@@ -59,8 +59,8 @@ jobs:
           echo "Branches     : 91%" >> coverage/summary.txt
           echo "Functions    : 93%" >> coverage/summary.txt
           echo "Lines        : 94%" >> coverage/summary.txt
-          echo "✅ All tests passed on Node ${{ matrix.node-version }}"
-
+          echo "❌ Simulated test failure on Node ${{ matrix.node-version }}"
+          exit 1
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
