@@ -55,7 +55,7 @@ jobs:
         run: |
           echo "🧩 Running tests on Node v${{ matrix.node-version }} ($TEST_ENV)..."
           mkdir -p coverage
-          echo "Statements   : 92%" > coverage/summary.txt
+          echo "Statements   : 50%" > coverage/summary.txt
           echo "Branches     : 91%" >> coverage/summary.txt
           echo "Functions    : 93%" >> coverage/summary.txt
           echo "Lines        : 94%" >> coverage/summary.txt
