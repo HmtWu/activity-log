@@ -142,29 +142,35 @@ jobs:
           echo "🚢 Deploying to production..."
           gh release create "prod-$(date +%s)" --notes "Production release after manual approval"
 
-  # === Step 7: Notifications & Auto Issue ===
-  notify:
-    name: Slack + Issue Notifications
+  notify-slack:
+    name: Slack Notifications
     needs: [test-matrix, deploy-production]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Send Slack Notification
-        if: success() || failure()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             MSG="✅ All tests passed and deployment succeeded!"
           else
-            MSG="❌ Tests or deployment failed in run ${{ github.run_id }}. Check logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            MSG="❌ Some jobs failed in run ${{ github.run_id }}!"
           fi
           curl -X POST -H 'Content-type: application/json' \
             --data "{\"text\": \"$MSG\"}" "$SLACK_WEBHOOK_URL"
 
-      - name: Create GitHub Issue if Tests Fail
-        if: failure()
-        uses: peter-evans/create-issue-from-file@v5
+  create-issue:
+    name: Auto Create Issue on Failure
+    needs: [test-matrix, deploy-production]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-node-20
+          path: ./coverage
+      - uses: peter-evans/create-issue-from-file@v5
         with:
           title: "❌ Automated Test Failure - ${{ github.run_id }}"
           content-filepath: ./coverage/summary.txt
