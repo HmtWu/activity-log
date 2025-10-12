@@ -1,0 +1,75 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build
+        run: |
+          npm i -g @vercel/ncc
+          npm i @actions/github
+          npm run build || echo "No build step required."
+      - name: Commit
+        run: |
+          git config --global user.name 'YourName'
+          git config --global user.email 'you@example.com'
+          git commit -am "dist build" || echo "no changes"
+          git push
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test index.js
+        env:
+          INPUT_GITHUB_USERNAME: "HmtWu"
+          INPUT_GITHUB_TOKEN: ${{ secrets.ACTIONSECRET2024 }}
+          INPUT_TARGET_REPOS: '["YourUsername/activity-log"]'
+          INPUT_OUTPUT_STYLE: MARKDOWN
+          INPUT_IGNORE_EVENTS: '[]'
+          INPUT_README_PATH: README.md
+          INPUT_COMMIT_MESSAGE: Update README.md
+          INPUT_EVENT_LIMIT: '100'
+        run: node ./dist/index.js
+
+  release:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull latest
+        run: |
+          git config --global user.name 'HmtWu'
+          git config --global user.email 'hamiltonwu717@gmail.com'
+          git pull
+      - name: Tag it
+        run: |
+          git tag -a v${{ github.run_number }} -m "Auto Release"
+          git push --tags
+      - name: Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          body: Auto release after test pass
+          draft: false
+          prerelease: false
