@@ -1,0 +1,61 @@
+name: Build-Test-Release 
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install and Build
+        run: |
+          npm ci || npm install
+          npm run build --if-present
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: ./
+
+  test:
+    name: Automated Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run Automated Tests
+        run: |
+          echo "🧪 Running automated tests..."
+          npm test || (echo "❌ Tests failed — stopping pipeline." && exit 1)
+
+  release:
+    name: Release to Dev
+    needs: test
+    runs-on: ubuntu-latest
+    if: success()
+    environment:
+      name: dev
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+      - name: Create Dev Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "✅ Tests passed. Releasing to Dev environment..."
+          gh release create "dev-$(date +%s)" build.zip --notes "Auto release after passing tests"
