@@ -1,0 +1,2 @@
+{"/Users/hmtwu/Desktop/jest-demo/sum.js": {"path":"/Users/hmtwu/Desktop/jest-demo/sum.js","statementMap":{"0":{"start":{"line":1,"column":21},"end":{"line":1,"column":34}},"1":{"start":{"line":1,"column":37},"end":{"line":1,"column":58}}},"fnMap":{"0":{"name":"sum","decl":{"start":{"line":1,"column":9},"end":{"line":1,"column":12}},"loc":{"start":{"line":1,"column":19},"end":{"line":1,"column":36}},"line":1}},"branchMap":{},"s":{"0":1,"1":1},"f":{"0":1},"b":{},"_coverageSchema":"1a1c01bbd47fc00a2c39e90264f33305004495a9","hash":"a297a078e8e81accd689cd0e3caccc7f744d55f0"}
+}
