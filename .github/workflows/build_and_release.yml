@@ -84,8 +84,8 @@ jobs:
 
       - name: Ensure coverage-summary.json exists
         run: |
-          if [ ! -f "./coverage/coverage-sum.json" ]; then
-            echo "⚠️ No coverage-sum.json found, creating dummy..."
+          if [ ! -f "./coverage/coverage-summery.json" ]; then
+            echo "⚠️ No coverage-summery.json found, creating dummy..."
             mkdir -p coverage
             echo '{"total":{"statements":{"pct":100}}}' > ./coverage/coverage-summary.json
           fi
@@ -93,7 +93,7 @@ jobs:
       - name: Parse Coverage Summary
         id: coverage-check
         run: |
-          COV=$(node -pe "require('./coverage/coverage-sum.json').total.statements.pct")
+          COV=$(node -pe "require('./coverage/coverage-summery.json').total.statements.pct")
           echo "Detected coverage: $COV%"
           if (( $(echo "$COV >= 90" | bc -l) )); then
             echo "✅ Coverage meets threshold."
