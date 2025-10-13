@@ -47,19 +47,24 @@ jobs:
       TEST_ENV: dev
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
+      # 安裝依賴
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install --save-dev jest
+
+      # 執行 Jest 並產生 coverage
       - name: Run Unit Tests with Coverage
         run: |
           echo "🧩 Running tests on Node v${{ matrix.node-version }} ($TEST_ENV)..."
-          mkdir -p coverage
-          echo "Statements   : 92%" > coverage/summary.txt
-          echo "Branches     : 91%" >> coverage/summary.txt
-          echo "Functions    : 93%" >> coverage/summary.txt
-          echo "Lines        : 94%" >> coverage/summary.txt
-          echo "✅ All tests passed on Node ${{ matrix.node-version }}"
+          npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov
+
+      # 上傳 coverage 結果作為 artifacts
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
