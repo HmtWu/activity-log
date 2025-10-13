@@ -2,7 +2,10 @@
 <h1 align="center" id="title">Activity Log</h1>
 ![Build Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=build)
 ![Test Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=test-matrix)
-![Release Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=deploy-production)
+![Release Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=deploy-production)![Build Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
+![Test Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
+![Release Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
+
 
 
 ![activity log](https://socialify.git.ci/TheDanniCraft/activity-log/image?forks=1&issues=1&language=1&logo=https%3A%2F%2Favatars.githubusercontent.com%2Fu%2F66677362&name=1&owner=1&pattern=Solid&pulls=1&stargazers=1&theme=Auto)
