@@ -69,39 +69,40 @@ jobs:
           path: coverage/
 
   # === Step 3: Verify Coverage Threshold ===
-check-coverage:
-  name: Verify Coverage Threshold
-  needs: test-matrix
-  runs-on: ubuntu-latest
-  outputs:
-    pass: ${{ steps.coverage-check.outputs.pass }}
-  steps:
-    - name: Download coverage report from Node 20
-      uses: actions/download-artifact@v4
-      with:
-        name: coverage-node-20
-        path: ./coverage
+  check-coverage:
+    name: Verify Coverage Threshold
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.coverage-check.outputs.pass }}
+    steps:
+      - name: Download coverage report from Node 20
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-node-20
+          path: ./coverage
 
-    - name: Ensure coverage-summary.json exists
-      run: |
-        if [ ! -f "./coverage/coverage-summary.json" ]; then
-          echo "⚠️ No coverage-summary.json found, creating dummy..."
-          mkdir -p coverage
-          echo '{"total":{"statements":{"pct":100}}}' > ./coverage/coverage-summary.json
-        fi
+      - name: Ensure coverage-summary.json exists
+        run: |
+          if [ ! -f "./coverage/coverage-summary.json" ]; then
+            echo "⚠️ No coverage-summary.json found, creating dummy..."
+            mkdir -p coverage
+            echo '{"total":{"statements":{"pct":100}}}' > ./coverage/coverage-summary.json
+          fi
 
-    - name: Parse Coverage Summary
-      id: coverage-check
-      run: |
-        COV=$(node -pe "require('./coverage/coverage-summary.json').total.statements.pct")
-        echo "Detected coverage: $COV%"
-        if (( $(echo "$COV >= 90" | bc -l) )); then
-          echo "✅ Coverage meets threshold."
-          echo "pass=true" >> $GITHUB_OUTPUT
-        else
-          echo "⚠️ Coverage below threshold ($COV%)."
-          echo "pass=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Parse Coverage Summary
+        id: coverage-check
+        run: |
+          COV=$(node -pe "require('./coverage/coverage-summary.json').total.statements.pct")
+          echo "Detected coverage: $COV%"
+          if (( $(echo "$COV >= 90" | bc -l) )); then
+            echo "✅ Coverage meets threshold."
+            echo "pass=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Coverage below threshold ($COV%)."
+            echo "pass=false" >> $GITHUB_OUTPUT
+          fi
+
   # === Step 4: Generate JUnit Report ===
   junit-report:
     name: Generate JUnit Test Report
@@ -121,7 +122,7 @@ check-coverage:
   deploy-staging:
     name: Deploy to Staging
     needs: check-coverage
-    if: needs.check-coverage.outputs.pass == 'true'
+    if: ${{ needs.check-coverage.outputs.pass == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -138,6 +139,7 @@ check-coverage:
   deploy-production:
     name: Deploy to Production
     needs: deploy-staging
+    if: ${{ needs.check-coverage.outputs.pass == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -151,6 +153,7 @@ check-coverage:
           echo "🚢 Deploying to production..."
           gh release create "prod-$(date +%s)" --notes "Production release after manual approval"
 
+  # === Step 7: Slack Notifications ===
   notify-slack:
     name: Slack Notifications
     needs: [test-matrix, deploy-production]
@@ -169,6 +172,7 @@ check-coverage:
           curl -X POST -H 'Content-type: application/json' \
             --data "{\"text\": \"$MSG\"}" "$SLACK_WEBHOOK_URL"
 
+  # === Step 8: Auto-create Issue if Tests Fail ===
   create-issue:
     name: Auto Create Issue on Failure
     needs: [test-matrix, deploy-production]
