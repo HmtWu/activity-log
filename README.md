@@ -1,10 +1,23 @@
+<!-- ✅ Workflow Badge (Clickable) -->
 [![Advanced CI/CD Pipeline](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml)
+
+<!-- ✅ Project Title -->
 <h1 align="center" id="title">Activity Log</h1>
-![Build Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=build)
-![Test Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=test-matrix)
-![Release Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg?branch=master&job=deploy-production)![Build Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
-![Test Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
-![Release Status](https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg)
+
+<!-- ✅ Pipeline Stage Badges -->
+<p align="center">
+  <img src="https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg" alt="Build Status" title="Build Status"/>
+  <img src="https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg" alt="Test Status" title="Test Status"/>
+  <img src="https://github.com/HmtWu/activity-log/actions/workflows/build_and_release.yml/badge.svg" alt="Release Status" title="Release Status"/>
+</p>
+
+---
+
+### 🧩 CI/CD Pipeline Overview
+This repository integrates a full CI/CD pipeline using GitHub Actions.  
+Each badge above represents the current status of the **Build**, **Test**, and **Release** stages respectively.  
+These badges are dynamically updated based on the latest workflow runs, providing real-time visibility into project stability.
+
 
 
 
