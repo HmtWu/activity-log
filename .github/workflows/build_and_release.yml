@@ -84,9 +84,9 @@ jobs:
       - name: Parse Coverage Summary
         id: coverage-check
         run: |
-          COV=$(grep 'Statements' coverage/summary.txt | awk '{print $3}' | tr -d '%')
+          COV=$(node -pe "require('./coverage/coverage-summary.json').total.statements.pct")
           echo "Detected coverage: $COV%"
-          if [ "$COV" -ge 90 ]; then
+          if (( $(echo "$COV >= 90" | bc -l) )); then
             echo "✅ Coverage meets threshold."
             echo "pass=true" >> $GITHUB_OUTPUT
           else
