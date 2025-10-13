@@ -76,24 +76,36 @@ jobs:
     outputs:
       pass: ${{ steps.coverage-check.outputs.pass }}
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download coverage report from Node 20
+        uses: actions/download-artifact@v4
         with:
           name: coverage-node-20
           path: ./coverage
 
+      - name: Show downloaded files
+        run: ls -R ./coverage
+
       - name: Parse Coverage Summary
         id: coverage-check
         run: |
+          if [ ! -f "./coverage/coverage-summary.json" ]; then
+            echo "❌ coverage-summary.json not found!"
+            echo "pass=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 用 NodeJS 讀取 JSON 內容
           COV=$(node -pe "require('./coverage/coverage-summary.json').total.statements.pct")
           echo "Detected coverage: $COV%"
+
+          # 判斷是否達到門檻 (90%)
           if (( $(echo "$COV >= 90" | bc -l) )); then
             echo "✅ Coverage meets threshold."
             echo "pass=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ Coverage below threshold ($COV%). Skipping release."
+            echo "⚠️ Coverage below threshold ($COV%). Skipping release."
             echo "pass=false" >> $GITHUB_OUTPUT
           fi
-
   # === Step 4: Generate JUnit Report ===
   junit-report:
     name: Generate JUnit Test Report
