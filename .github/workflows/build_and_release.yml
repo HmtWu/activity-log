@@ -69,7 +69,7 @@ jobs:
           path: coverage/
 
   # === Step 3: Verify Coverage Threshold ===
-  check-coverage:
+check-coverage:
   name: Verify Coverage Threshold
   needs: test-matrix
   runs-on: ubuntu-latest
