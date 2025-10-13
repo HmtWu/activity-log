@@ -52,19 +52,16 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      # 安裝依賴
       - name: Install dependencies
         run: |
           npm install
           npm install --save-dev jest
 
-      # 執行 Jest 並產生 coverage
       - name: Run Unit Tests with Coverage
         run: |
           echo "🧩 Running tests on Node v${{ matrix.node-version }} ($TEST_ENV)..."
           npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov
 
-      # 上傳 coverage 結果作為 artifacts
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
